@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { UserRole } from '../types';
 import type { MockUser } from '../mockData/mockUsers';
 
@@ -50,6 +51,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
+// Fast refresh warning: This is a standard React pattern to export hooks from context files
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

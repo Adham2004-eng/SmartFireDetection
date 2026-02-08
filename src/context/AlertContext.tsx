@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { Alert, AlertType, RiskLevel } from '../types';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import type { Alert } from '../types';
 import { mockAlerts, generateMockAlert } from '../mockData/mockAlerts';
 
 interface AlertContextType {
@@ -65,6 +66,8 @@ export const AlertProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   );
 };
 
+// Fast refresh warning: This is a standard React pattern to export hooks from context files
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAlerts = () => {
   const context = useContext(AlertContext);
   if (context === undefined) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Typography,
   Grid,
@@ -19,113 +19,102 @@ import { useAlerts } from '../context/AlertContext';
 
 const RoomMonitoringPage: React.FC = () => {
   const { alerts, addAlert } = useAlerts();
-  const [rooms, setRooms] = useState<Room[]>(mockRooms);
   const [selectedRoomId, setSelectedRoomId] = useState<string>(mockRooms[0].id);
 
-  const selectedRoom = rooms.find((r) => r.id === selectedRoomId) || rooms[0];
-
-  // React to fire alerts - update room state when fire alerts are added
-  useEffect(() => {
+  // React to fire alerts - derive room state from alerts
+  const rooms = useMemo<Room[]>(() => {
     const fireAlerts = alerts.filter(
       (alert) => alert.type === 'fire' && !alert.acknowledged && alert.quadrantNumber
     );
 
-    setRooms((currentRooms) => {
-      let updatedRooms = [...currentRooms];
-      let hasChanges = false;
+    let updatedRooms = [...mockRooms];
 
-      // Process each fire alert
-      fireAlerts.forEach((alert) => {
-        const roomIndex = updatedRooms.findIndex((r) => r.id === alert.roomId);
-        if (roomIndex !== -1) {
-          const room = updatedRooms[roomIndex];
-          const quadrant = room.quadrants.find((q) => q.number === alert.quadrantNumber);
+    // Process each fire alert
+    fireAlerts.forEach((alert) => {
+      const roomIndex = updatedRooms.findIndex((r) => r.id === alert.roomId);
+      if (roomIndex !== -1) {
+        const room = updatedRooms[roomIndex];
+        const quadrant = room.quadrants.find((q) => q.number === alert.quadrantNumber);
+        
+        if (quadrant && alert.quadrantNumber !== undefined) {
+          const needsUpdate = quadrant.status !== 'fire' || 
+            room.quadrants.some((q) => q.number !== alert.quadrantNumber && q.powerStatus === 'ON');
           
-          if (quadrant) {
-            // Check if we need to update this room
-            const needsUpdate = quadrant.status !== 'fire' || 
-              room.quadrants.some((q) => q.number !== alert.quadrantNumber && q.powerStatus === 'ON');
-            
-            if (needsUpdate) {
-              // Use updateQuadrantStatus to properly set fire status and cut power
-              updatedRooms = updateQuadrantStatus(
-                updatedRooms,
-                alert.roomId,
-                alert.quadrantNumber,
-                'fire'
-              );
-              hasChanges = true;
-            }
+          if (needsUpdate) {
+            // Use updateQuadrantStatus to properly set fire status and cut power
+            updatedRooms = updateQuadrantStatus(
+              updatedRooms,
+              alert.roomId,
+              alert.quadrantNumber,
+              'fire'
+            );
           }
         }
-      });
-
-      // Reset rooms that don't have active fire alerts
-      updatedRooms = updatedRooms.map((room) => {
-        const hasActiveFire = fireAlerts.some((alert) => alert.roomId === room.id);
-        if (!hasActiveFire) {
-          // Check if room needs to be reset
-          const needsReset = room.quadrants.some(
-            (q) => q.status === 'fire' || q.powerStatus === 'OFF'
-          );
-          if (needsReset) {
-            hasChanges = true;
-            return {
-              ...room,
-              quadrants: room.quadrants.map((q) => ({
-                ...q,
-                status: 'safe' as const,
-                temperature: q.temperature > 30 ? 22 : q.temperature,
-                powerStatus: 'ON' as const,
-              })),
-            };
-          }
-        }
-        return room;
-      });
-
-      return hasChanges ? updatedRooms : currentRooms;
+      }
     });
+
+    // Reset rooms that don't have active fire alerts
+    updatedRooms = updatedRooms.map((room) => {
+      const hasActiveFire = fireAlerts.some((alert) => alert.roomId === room.id);
+      if (!hasActiveFire) {
+        // Check if room needs to be reset
+        const needsReset = room.quadrants.some(
+          (q) => q.status === 'fire' || q.powerStatus === 'OFF'
+        );
+        if (needsReset) {
+          return {
+            ...room,
+            quadrants: room.quadrants.map((q) => ({
+              ...q,
+              status: 'safe' as const,
+              temperature: q.temperature > 30 ? 22 : q.temperature,
+              powerStatus: 'ON' as const,
+            })),
+          };
+        }
+      }
+      return room;
+    });
+
+    return updatedRooms;
   }, [alerts]);
+
+  const selectedRoom = rooms.find((r) => r.id === selectedRoomId) || rooms[0];
 
   // Simulate random fire events (for demo)
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() < 0.05) {
-        setRooms((currentRooms) => {
-          const randomRoom = currentRooms[Math.floor(Math.random() * currentRooms.length)];
-          const randomQuadrant = Math.floor(Math.random() * 4) + 1;
-          const hasExistingFire = randomRoom.quadrants.some((q) => q.status === 'fire');
-          const hasActiveFireAlert = alerts.some(
-            (a) => a.type === 'fire' && !a.acknowledged && a.roomId === randomRoom.id
-          );
+        const randomRoom = rooms[Math.floor(Math.random() * rooms.length)];
+        const randomQuadrant = Math.floor(Math.random() * 4) + 1;
+        const hasExistingFire = randomRoom.quadrants.some((q) => q.status === 'fire');
+        const hasActiveFireAlert = alerts.some(
+          (a) => a.type === 'fire' && !a.acknowledged && a.roomId === randomRoom.id
+        );
 
-          if (!hasExistingFire && !hasActiveFireAlert) {
-            // Create fire alert - this will trigger the useEffect above to update rooms
-            addAlert({
-              id: `alert-${Date.now()}`,
-              type: 'fire',
-              title: 'Fire Detected',
-              message: `Fire detected in ${randomRoom.name}, Quadrant ${randomQuadrant}`,
-              roomId: randomRoom.id,
-              roomName: randomRoom.name,
-              quadrantNumber: randomQuadrant,
-              timestamp: new Date().toISOString(),
-              acknowledged: false,
-              cameraSnapshot: 'https://via.placeholder.com/300x200?text=Fire+Snapshot',
-            });
-          }
-          return currentRooms;
-        });
+        if (!hasExistingFire && !hasActiveFireAlert) {
+          // Create fire alert - this will trigger rooms to update via useMemo
+          addAlert({
+            id: `alert-${Date.now()}`,
+            type: 'fire',
+            title: 'Fire Detected',
+            message: `Fire detected in ${randomRoom.name}, Quadrant ${randomQuadrant}`,
+            roomId: randomRoom.id,
+            roomName: randomRoom.name,
+            quadrantNumber: randomQuadrant,
+            timestamp: new Date().toISOString(),
+            acknowledged: false,
+            cameraSnapshot: 'https://via.placeholder.com/300x200?text=Fire+Snapshot',
+          });
+        }
       }
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [alerts, addAlert]);
+  }, [alerts, addAlert, rooms]);
 
-  const QuadrantCard: React.FC<{ quadrant: Quadrant; roomName: string }> = ({
+  const QuadrantCard: React.FC<{ quadrant: Quadrant }> = ({
     quadrant,
-    roomName,
   }) => {
     const isFire = quadrant.status === 'fire';
     const isPowerOff = quadrant.powerStatus === 'OFF';
@@ -280,6 +269,7 @@ const RoomMonitoringPage: React.FC = () => {
 
       {/* Room Stats */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
+        {/* @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect */}
         <Grid item xs={12} sm={6} md={4}>
           <Card
             sx={{
@@ -297,6 +287,7 @@ const RoomMonitoringPage: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+        {/* @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect */}
         <Grid item xs={12} sm={6} md={4}>
           <Card
             sx={{
@@ -323,6 +314,7 @@ const RoomMonitoringPage: React.FC = () => {
             </CardContent>
           </Card>
         </Grid>
+        {/* @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect */}
         <Grid item xs={12} sm={12} md={4}>
           <Card
             sx={{
@@ -347,8 +339,9 @@ const RoomMonitoringPage: React.FC = () => {
 
       <Grid container spacing={3}>
         {selectedRoom.quadrants.map((quadrant) => (
+          // @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect
           <Grid item xs={12} sm={6} key={quadrant.id}>
-            <QuadrantCard quadrant={quadrant} roomName={selectedRoom.name} />
+            <QuadrantCard quadrant={quadrant} />
           </Grid>
         ))}
       </Grid>

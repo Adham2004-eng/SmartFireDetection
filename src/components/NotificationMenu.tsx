@@ -8,8 +8,6 @@ import {
   Box,
   Chip,
   Divider,
-  Card,
-  CardContent,
   Avatar,
   ListItemText,
   ListItemIcon,
@@ -24,10 +22,9 @@ import {
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAlerts } from '../context/AlertContext';
-import type { Alert } from '../types';
 
 const NotificationMenu: React.FC = () => {
-  const { alerts, acknowledgeAlert, getUnacknowledgedAlerts } = useAlerts();
+  const { acknowledgeAlert, getUnacknowledgedAlerts } = useAlerts();
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -42,7 +39,7 @@ const NotificationMenu: React.FC = () => {
     setAnchorEl(null);
   };
 
-  const handleAlertClick = (alert: Alert) => {
+  const handleAlertClick = () => {
     handleClose();
     navigate('/alerts');
   };
@@ -121,7 +118,7 @@ const NotificationMenu: React.FC = () => {
             unacknowledgedAlerts.slice(0, 5).map((alert) => (
               <MenuItem
                 key={alert.id}
-                onClick={() => handleAlertClick(alert)}
+                onClick={handleAlertClick}
                 sx={{
                   py: 1.5,
                   px: 2,
@@ -212,4 +209,5 @@ const NotificationMenu: React.FC = () => {
 };
 
 export default NotificationMenu;
+
 

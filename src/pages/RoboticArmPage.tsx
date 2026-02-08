@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, startTransition } from 'react';
 import {
   Typography,
   Box,
@@ -8,81 +8,28 @@ import {
   Grid,
   LinearProgress,
 } from '@mui/material';
-import { Build, PlayArrow, Stop, LocationOn } from '@mui/icons-material';
+import { PlayArrow, Stop, LocationOn } from '@mui/icons-material';
 import type { RoboticArm } from '../types';
 import { mockRoboticArm } from '../mockData/mockRoboticArm';
 import { useAlerts } from '../context/AlertContext';
 import { mockRooms } from '../mockData/mockRooms';
+import type { Alert } from '../types';
 
-const RoboticArmPage: React.FC = () => {
-  const [arm, setArm] = useState<RoboticArm>(mockRoboticArm);
-  const { alerts } = useAlerts();
+interface VisualizationProps {
+  activeFireAlert: Alert | undefined;
+  arm: RoboticArm;
+}
 
-  const activeFireAlert = alerts.find(
-    (alert) => alert.type === 'fire' && !alert.acknowledged
-  );
+const Visualization: React.FC<VisualizationProps> = ({ activeFireAlert, arm }) => {
+  const room = activeFireAlert
+    ? mockRooms.find((r) => r.id === activeFireAlert.roomId) ?? mockRooms[0]
+    : mockRooms[0];
 
-  useEffect(() => {
-    if (activeFireAlert && activeFireAlert.quadrantNumber) {
-      const targetRoom = mockRooms.find((r) => r.id === activeFireAlert.roomId);
-      if (targetRoom) {
-        const targetQuadrant = targetRoom.quadrants.find(
-          (q) => q.number === activeFireAlert.quadrantNumber
-        );
-        if (targetQuadrant) {
-          setArm((prevArm) => ({
-            ...prevArm,
-            targetQuadrant: {
-              roomId: activeFireAlert.roomId,
-              quadrantNumber: activeFireAlert.quadrantNumber!,
-            },
-            currentPosition: targetQuadrant.coordinates,
-            status: 'suppressing',
-            lastAction: `Fire suppression activated in ${activeFireAlert.roomName}, Quadrant ${activeFireAlert.quadrantNumber}`,
-            lastActionTime: new Date().toISOString(),
-          }));
-        }
-      }
-    } else {
-      setArm((prevArm) => ({
-        ...prevArm,
-        status: 'idle',
-        targetQuadrant: undefined,
-      }));
-    }
-  }, [alerts, activeFireAlert]);
+  if (!room) {
+    return <Box>No room data available</Box>;
+  }
 
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case 'suppressing':
-        return {
-          color: 'error',
-          bg: 'linear-gradient(135deg, rgba(255, 71, 87, 0.15) 0%, rgba(255, 71, 87, 0.05) 100%)',
-          border: 'rgba(255, 71, 87, 0.3)',
-        };
-      case 'moving':
-        return {
-          color: 'warning',
-          bg: 'linear-gradient(135deg, rgba(255, 165, 2, 0.15) 0%, rgba(255, 165, 2, 0.05) 100%)',
-          border: 'rgba(255, 165, 2, 0.3)',
-        };
-      default:
-        return {
-          color: 'success',
-          bg: 'linear-gradient(135deg, rgba(46, 213, 115, 0.15) 0%, rgba(46, 213, 115, 0.05) 100%)',
-          border: 'rgba(46, 213, 115, 0.3)',
-        };
-    }
-  };
-
-  const statusConfig = getStatusConfig(arm.status);
-
-  const Visualization: React.FC = () => {
-    const room = activeFireAlert
-      ? mockRooms.find((r) => r.id === activeFireAlert.roomId)
-      : mockRooms[0];
-
-    const targetQuadrantNumber = activeFireAlert?.quadrantNumber ?? arm.targetQuadrant?.quadrantNumber;
+  const targetQuadrantNumber = activeFireAlert?.quadrantNumber ?? arm.targetQuadrant?.quadrantNumber;
 
     return (
       <Box
@@ -196,7 +143,79 @@ const RoboticArmPage: React.FC = () => {
         </Box>
       </Box>
     );
+};
+
+const RoboticArmPage: React.FC = () => {
+  const [arm, setArm] = useState<RoboticArm>(mockRoboticArm);
+  const { alerts } = useAlerts();
+
+  const activeFireAlert = alerts.find(
+    (alert) => alert.type === 'fire' && !alert.acknowledged
+  );
+
+  // Sync arm state with alerts - using startTransition to avoid blocking render
+  useEffect(() => {
+    if (activeFireAlert && activeFireAlert.quadrantNumber) {
+      const targetRoom = mockRooms.find((r) => r.id === activeFireAlert.roomId);
+      if (targetRoom) {
+        const targetQuadrant = targetRoom.quadrants.find(
+          (q) => q.number === activeFireAlert.quadrantNumber
+        );
+        if (targetQuadrant) {
+          startTransition(() => {
+            setArm((prevArm) => ({
+              ...prevArm,
+              targetQuadrant: {
+                roomId: activeFireAlert.roomId,
+                quadrantNumber: activeFireAlert.quadrantNumber!,
+              },
+              currentPosition: targetQuadrant.coordinates,
+              status: 'suppressing',
+              lastAction: `Fire suppression activated in ${activeFireAlert.roomName}, Quadrant ${activeFireAlert.quadrantNumber}`,
+              lastActionTime: new Date().toISOString(),
+            }));
+          });
+          return;
+        }
+      }
+    }
+    startTransition(() => {
+      setArm((prevArm) => ({
+        ...prevArm,
+        status: 'idle',
+        targetQuadrant: undefined,
+      }));
+    });
+  }, [activeFireAlert]);
+
+  const getStatusConfig = (status: string): {
+    color: 'error' | 'warning' | 'success';
+    bg: string;
+    border: string;
+  } => {
+    switch (status) {
+      case 'suppressing':
+        return {
+          color: 'error',
+          bg: 'linear-gradient(135deg, rgba(255, 71, 87, 0.15) 0%, rgba(255, 71, 87, 0.05) 100%)',
+          border: 'rgba(255, 71, 87, 0.3)',
+        };
+      case 'moving':
+        return {
+          color: 'warning',
+          bg: 'linear-gradient(135deg, rgba(255, 165, 2, 0.15) 0%, rgba(255, 165, 2, 0.05) 100%)',
+          border: 'rgba(255, 165, 2, 0.3)',
+        };
+      default:
+        return {
+          color: 'success',
+          bg: 'linear-gradient(135deg, rgba(46, 213, 115, 0.15) 0%, rgba(46, 213, 115, 0.05) 100%)',
+          border: 'rgba(46, 213, 115, 0.3)',
+        };
+    }
   };
+
+  const statusConfig = getStatusConfig(arm.status);
 
   return (
     <Box>
@@ -210,17 +229,19 @@ const RoboticArmPage: React.FC = () => {
       </Box>
 
       <Grid container spacing={3}>
+        {/* @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect */}
         <Grid item xs={12} lg={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mb: 2 }}>
                 Arm Visualization
               </Typography>
-              <Visualization />
+              <Visualization activeFireAlert={activeFireAlert} arm={arm} />
             </CardContent>
           </Card>
         </Grid>
 
+        {/* @ts-expect-error - MUI Grid item prop is valid but TypeScript types are incorrect */}
         <Grid item xs={12} lg={4}>
           <Card
             sx={{
@@ -237,13 +258,13 @@ const RoboticArmPage: React.FC = () => {
                 <Chip
                   icon={arm.status === 'idle' ? <Stop /> : <PlayArrow />}
                   label={arm.status.toUpperCase()}
-                  color={statusConfig.color as any}
+                  color={statusConfig.color}
                   sx={{ mb: 2, fontSize: '1rem', height: 32, fontWeight: 'bold' }}
                 />
                 <LinearProgress
                   variant="determinate"
                   value={arm.status === 'idle' ? 0 : arm.status === 'suppressing' ? 100 : 50}
-                  color={statusConfig.color as any}
+                  color={statusConfig.color}
                   sx={{
                     height: 8,
                     borderRadius: 1,
